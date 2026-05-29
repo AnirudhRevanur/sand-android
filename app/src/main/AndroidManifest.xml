@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Track Instagram usage -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- Draw overlay over Instagram -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Foreground service for the tracker -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- Keep service alive -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Network calls to sand-api -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:label="Sand"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        xmlns:tools="http://schemas.android.com/tools"
+        android:theme="@style/Theme.Sand"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+    >
+
+        <!-- Main entry point — just for setup/permissions -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Overlay activity shown when Instagram is gated -->
+        <activity
+            android:name=".overlay.OverlayActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Sand.Overlay"
+            android:showOnLockScreen="false"
+            android:turnScreenOn="false" />
+
+        <!-- Foreground service that watches Instagram usage -->
+        <service
+            android:name=".tracker.TrackerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="monitorDeviceState" />
+    </service>
+
+
+        <!-- Start tracker on boot -->
+        <receiver
+            android:name=".tracker.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+<!-- Accessibility service for real-time Instagram detection -->
+<service
+    android:name=".tracker.SandAccessibilityService"
+    android:exported="true"
+    android:label="Sand"
+    android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+    <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+    </intent-filter>
+    <meta-data
+        android:name="android.accessibilityservice"
+        android:resource="@xml/accessibility_service" />
+</service>
+    </application>
+
+</manifest>
