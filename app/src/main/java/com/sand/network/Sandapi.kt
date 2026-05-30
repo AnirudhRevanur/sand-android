@@ -4,12 +4,14 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Query
 
 // ── Request bodies ────────────────────────────────────────────────────────────
 
-data class TimeSyncRequest(val minutes: Int)
+data class TimeSyncRequest(val app_id: String, val minutes: Int)
 
 data class VerifyRequest(
+    val app_id: String,
     val set_id: String,
     val token: String,
     val answer: String
@@ -59,11 +61,11 @@ interface SandApi {
     suspend fun sync(@Body body: TimeSyncRequest): Response<SyncResponse>
 
     @POST("generate")
-    suspend fun generate(): Response<GenerateResponse>
+    suspend fun generate(@Query("app_id") app_id: String): Response<GenerateResponse>
 
     @POST("verify")
     suspend fun verify(@Body body: VerifyRequest): Response<VerifyResponse>
 
     @GET("state")
-    suspend fun state(): Response<StateResponse>
+    suspend fun state(@Query("app_id") app_id: String): Response<StateResponse>
 }

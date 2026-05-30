@@ -38,6 +38,7 @@ class OverlayActivity : ComponentActivity() {
         const val EXTRA_MINUTES = "extra_minutes"
         const val EXTRA_LEVEL = "extra_level"
         const val EXTRA_NO_API = "extra_no_api"
+        const val EXTRA_APP_ID = "extra_app_id"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,12 +56,14 @@ class OverlayActivity : ComponentActivity() {
         val minutes = intent.getIntExtra(EXTRA_MINUTES, 0)
         val level = intent.getIntExtra(EXTRA_LEVEL, 1)
         val noApi = intent.getBooleanExtra(EXTRA_NO_API, false)
+        val appId = intent.getStringExtra(EXTRA_APP_ID) ?: "unknown"
 
         setContent {
             SandOverlay(
                 minutesUsed = minutes,
                 level = level,
                 noApi = noApi,
+                appId = appId,
                 onAccessGranted = { finish() }
             )
         }
@@ -72,6 +75,7 @@ fun SandOverlay(
     minutesUsed: Int,
     level: Int,
     noApi: Boolean,
+    appId: String,
     onAccessGranted: () -> Unit
 ) {
     val context = LocalContext.current
@@ -89,9 +93,9 @@ fun SandOverlay(
 
     val shameMessage = when {
         minutesUsed >= 90 -> "${minutesUsed} minutes. You need help."
-        minutesUsed >= 60 -> "${minutesUsed} minutes on Instagram. Embarrassing."
-        minutesUsed >= 30 -> "You've used ${minutesUsed} minutes of Instagram today."
-        else -> "Laptop not reachable. No Instagram for you."
+        minutesUsed >= 60 -> "${minutesUsed} minutes. Embarrassing."
+        minutesUsed >= 30 -> "You've used ${minutesUsed} minutes today."
+        else -> "Laptop not reachable. No access for you."
     }
 
     val levelLabel = when (level) {
@@ -100,7 +104,7 @@ fun SandOverlay(
         3 -> "Level 3 — Derivatives"
         4 -> "Level 4 — Integration"
         5 -> "Level 5 — Linear Algebra"
-        else -> "No API. No Instagram."
+        else -> "No API. No access."
     }
 
     Box(
@@ -116,10 +120,8 @@ fun SandOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-
             Spacer(modifier = Modifier.height(48.dp))
 
-            // App name
             Text(
                 text = "SAND",
                 color = Color(0xFFFF4444),
@@ -129,7 +131,6 @@ fun SandOverlay(
                 letterSpacing = 12.sp
             )
 
-            // Settings button — right under title, always visible
             TextButton(
                 onClick = {
                     context.startActivity(
@@ -147,7 +148,6 @@ fun SandOverlay(
                 )
             }
 
-            // Shame message
             Text(
                 text = shameMessage,
                 color = Color(0xFFAAAAAA),
@@ -188,7 +188,7 @@ fun SandOverlay(
                                         isLoading = false
                                         return@launch
                                     }
-                                    val response = api.generate()
+                                    val response = api.generate(appId)
                                     if (response.isSuccessful) {
                                         val body = response.body()!!
                                         if (!body.problems.isNullOrEmpty()) {
@@ -261,7 +261,7 @@ fun SandOverlay(
                             onDone = {
                                 scope.launch {
                                     submitAnswer(
-                                        context, userAnswer, setId, currentToken,
+                                        context, appId, userAnswer, setId, currentToken,
                                         onCorrectMore = { nt, np, r ->
                                             currentToken = nt
                                             currentProblem = np
@@ -288,7 +288,7 @@ fun SandOverlay(
                             scope.launch {
                                 isLoading = true
                                 submitAnswer(
-                                    context, userAnswer, setId, currentToken,
+                                    context, appId, userAnswer, setId, currentToken,
                                     onCorrectMore = { nt, np, r ->
                                         currentToken = nt
                                         currentProblem = np
@@ -336,6 +336,7 @@ fun SandOverlay(
 
 private suspend fun submitAnswer(
     context: android.content.Context,
+    appId: String,
     userAnswer: String,
     setId: String,
     token: String,
@@ -347,7 +348,7 @@ private suspend fun submitAnswer(
         val api = SandClient.buildFromPrefs(context)
             ?: return@withContext withContext(Dispatchers.Main) { onWrong("No API. Blocked.") }
 
-        val response = api.verify(VerifyRequest(setId, token, userAnswer))
+        val response = api.verify(VerifyRequest(appId, setId, token, userAnswer))
         if (response.isSuccessful) {
             val body = response.body()!!
             withContext(Dispatchers.Main) {

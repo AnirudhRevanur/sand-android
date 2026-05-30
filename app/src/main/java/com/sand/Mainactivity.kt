@@ -10,7 +10,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,13 +32,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            SandSettings()
+            SandApp()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        // Start tracker service if permissions are granted
         if (hasUsagePermission() && Settings.canDrawOverlays(this)) {
             startForegroundService(Intent(this, TrackerService::class.java))
         }
@@ -54,7 +55,32 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun SandSettings() {
+fun SandApp() {
+    var showAppPicker by remember { mutableStateOf(false) }
+
+    if (showAppPicker) {
+        Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            // Back button
+            TextButton(
+                onClick = { showAppPicker = false },
+                modifier = Modifier.padding(top = 32.dp, start = 8.dp)
+            ) {
+                Text(
+                    text = "← back",
+                    color = Color(0xFFFF4444),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 14.sp
+                )
+            }
+            AppPickerScreen()
+        }
+    } else {
+        SandSettings(onOpenAppPicker = { showAppPicker = true })
+    }
+}
+
+@Composable
+fun SandSettings(onOpenAppPicker: () -> Unit) {
     val context = LocalContext.current
     var ipInput by remember { mutableStateOf(SandClient.getStoredIp(context) ?: "") }
     var savedIp by remember { mutableStateOf(SandClient.getStoredIp(context)) }
@@ -74,6 +100,10 @@ fun SandSettings() {
         mutableStateOf(Settings.canDrawOverlays(context))
     }
 
+    val hasAccessibility = remember {
+        mutableStateOf(isAccessibilityEnabled(context))
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -83,6 +113,7 @@ fun SandSettings() {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp)
@@ -118,19 +149,9 @@ fun SandSettings() {
             )
 
             PermissionRow(
-                label = "Accessibility",
-                granted = isAccessibilityEnabled(context),
-                onRequest = {
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                }
-            )
-
-            PermissionRow(
                 label = "Usage Access",
                 granted = hasUsagePermission.value,
-                onRequest = {
-                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                }
+                onRequest = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
             )
 
             PermissionRow(
@@ -145,6 +166,45 @@ fun SandSettings() {
                     )
                 }
             )
+
+            PermissionRow(
+                label = "Accessibility",
+                granted = hasAccessibility.value,
+                onRequest = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            )
+
+            Divider(color = Color(0xFF333333))
+
+            // ── Blocked Apps ──────────────────────────────────────────────────
+
+            Text(
+                text = "BLOCKED APPS",
+                color = Color(0xFF888888),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 4.sp
+            )
+
+            val blockedCount = BlockedApps.getBlocked(context).size
+            Text(
+                text = if (blockedCount == 0) "No apps blocked yet"
+                       else "$blockedCount app${if (blockedCount != 1) "s" else ""} blocked",
+                color = if (blockedCount == 0) Color(0xFFFF4444) else Color(0xFF44FF88),
+                fontSize = 13.sp,
+                fontFamily = FontFamily.Monospace
+            )
+
+            Button(
+                onClick = onOpenAppPicker,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4444)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "Manage Blocked Apps",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+            }
 
             Divider(color = Color(0xFF333333))
 
@@ -167,7 +227,7 @@ fun SandSettings() {
                 )
             } else {
                 Text(
-                    text = "No IP set — Instagram blocked after 30min",
+                    text = "No IP set — all blocked apps will be blocked",
                     color = Color(0xFFFF4444),
                     fontSize = 13.sp,
                     fontFamily = FontFamily.Monospace,
@@ -219,7 +279,7 @@ fun SandSettings() {
                         SandClient.clearIp(context)
                         savedIp = null
                         ipInput = ""
-                        statusMessage = "Cleared. Instagram blocked."
+                        statusMessage = "Cleared."
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF4444)),
                     modifier = Modifier.weight(1f)
@@ -236,6 +296,8 @@ fun SandSettings() {
                     fontFamily = FontFamily.Monospace
                 )
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
