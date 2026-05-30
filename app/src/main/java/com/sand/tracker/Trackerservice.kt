@@ -3,11 +3,11 @@ package com.sand.tracker
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.sand.BlockedApps
 import com.sand.network.SandClient
 import com.sand.network.TimeSyncRequest
 import kotlinx.coroutines.CoroutineScope
@@ -21,8 +21,7 @@ class TrackerService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + Job())
     private val CHANNEL_ID = "sand_tracker"
     private val NOTIFICATION_ID = 1
-    private val POLL_INTERVAL_MS = 60_000L  // Just syncs time every minute, overlay handled by AccessibilityService
-    private val INSTAGRAM_PKG = "com.instagram.android"
+    private val POLL_INTERVAL_MS = 60_000L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannel()
@@ -36,41 +35,72 @@ class TrackerService : Service() {
     private fun startTracking() {
         scope.launch {
             while (true) {
-                syncTime()
+                syncAllApps()
                 delay(POLL_INTERVAL_MS)
             }
         }
     }
 
-    private suspend fun syncTime() {
-        val minutes = getInstagramMinutesToday()
-        updateNotification("Instagram today: ${minutes}min")
-
-        // Just sync — don't fire overlay here, AccessibilityService handles that instantly
-        val api = SandClient.buildFromPrefs(this) ?: return
-        try {
-            api.sync(TimeSyncRequest(minutes))
-        } catch (e: Exception) {
-            // Silent fail — AccessibilityService will handle blocking
+    private suspend fun syncAllApps() {
+        val blockedApps = BlockedApps.getBlocked(this@TrackerService)
+        if (blockedApps.isEmpty()) {
+            updateNotification("No apps blocked")
+            return
         }
+
+        val api = SandClient.buildFromPrefs(this@TrackerService)
+
+        var totalMinutes = 0
+        blockedApps.forEach { packageName ->
+            val minutes = getAppMinutesToday(packageName)
+            totalMinutes += minutes
+            if (api != null) {
+                try {
+                    api.sync(TimeSyncRequest(packageName, minutes))
+                } catch (e: Exception) {
+                    // Silent fail — AccessibilityService handles blocking
+                }
+            }
+        }
+
+        updateNotification("Watching ${blockedApps.size} apps — ${totalMinutes}min total today")
     }
 
-    private fun getInstagramMinutesToday(): Int {
-        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    private fun getAppMinutesToday(packageName: String): Int {
+        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
         val now = System.currentTimeMillis()
-        val cal = java.util.Calendar.getInstance().apply {
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getDefault()).apply {
+            timeInMillis = now
             set(java.util.Calendar.HOUR_OF_DAY, 0)
             set(java.util.Calendar.MINUTE, 0)
             set(java.util.Calendar.SECOND, 0)
             set(java.util.Calendar.MILLISECOND, 0)
         }
-        val stats = usm.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY,
-            cal.timeInMillis,
-            now
-        )
-        val ms = stats?.find { it.packageName == INSTAGRAM_PKG }?.totalTimeInForeground ?: 0L
-        return (ms / 1000 / 60).toInt()
+
+        val events = usm.queryEvents(cal.timeInMillis, now)
+        val event = android.app.usage.UsageEvents.Event()
+
+        var totalMs = 0L
+        var lastForeground = 0L
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            if (event.packageName != packageName) continue
+            when (event.eventType) {
+                android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED -> {
+                    lastForeground = event.timeStamp
+                }
+                android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED -> {
+                    if (lastForeground > 0) {
+                        totalMs += event.timeStamp - lastForeground
+                        lastForeground = 0
+                    }
+                }
+            }
+        }
+
+        if (lastForeground > 0) totalMs += now - lastForeground
+        return (totalMs / 1000 / 60).toInt()
     }
 
     private fun createNotificationChannel() {
@@ -78,7 +108,7 @@ class TrackerService : Service() {
             CHANNEL_ID,
             "Sand Tracker",
             NotificationManager.IMPORTANCE_LOW
-        ).apply { description = "Tracks Instagram usage" }
+        ).apply { description = "Tracks blocked app usage" }
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(channel)
     }
