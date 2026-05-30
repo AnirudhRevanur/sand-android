@@ -55,24 +55,49 @@ class TrackerService : Service() {
         }
     }
 
-    private fun getInstagramMinutesToday(): Int {
-        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val now = System.currentTimeMillis()
-        val cal = java.util.Calendar.getInstance().apply {
-            set(java.util.Calendar.HOUR_OF_DAY, 0)
-            set(java.util.Calendar.MINUTE, 0)
-            set(java.util.Calendar.SECOND, 0)
-            set(java.util.Calendar.MILLISECOND, 0)
+private fun getInstagramMinutesToday(): Int {
+    val usm = getSystemService(USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+    val now = System.currentTimeMillis()
+
+    val cal = java.util.Calendar.getInstance(java.util.TimeZone.getDefault()).apply {
+        timeInMillis = now
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }
+    val startOfDay = cal.timeInMillis
+
+    val events = usm.queryEvents(startOfDay, now)
+    val event = android.app.usage.UsageEvents.Event()
+
+    var totalMs = 0L
+    var lastForeground = 0L
+
+    while (events.hasNextEvent()) {
+        events.getNextEvent(event)
+        if (event.packageName != INSTAGRAM_PKG) continue
+
+        when (event.eventType) {
+            android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED -> {
+                lastForeground = event.timeStamp
+            }
+            android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED -> {
+                if (lastForeground > 0) {
+                    totalMs += event.timeStamp - lastForeground
+                    lastForeground = 0
+                }
+            }
         }
-        val stats = usm.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY,
-            cal.timeInMillis,
-            now
-        )
-        val ms = stats?.find { it.packageName == INSTAGRAM_PKG }?.totalTimeInForeground ?: 0L
-        return (ms / 1000 / 60).toInt()
     }
 
+    // If still in foreground right now
+    if (lastForeground > 0) {
+        totalMs += now - lastForeground
+    }
+
+    return (totalMs / 1000 / 60).toInt()
+}
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
